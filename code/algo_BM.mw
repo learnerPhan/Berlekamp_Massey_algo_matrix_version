@@ -1,0 +1,254 @@
+with(LinearAlgebra):
+with(LinearAlgebra[Transpose]):
+
+algo_BM := proc(u)
+
+local length_u, X,V,x,M,v,position_1th_non_nul,corrector,d,k,out_of_size,X_shifted,x_saved,result,x_tmp,M_tmp;
+
+	out_of_size :=0;
+	length_u := Dimension(u);
+
+	#initialiser
+	X := Matrix(1,length_u+1);
+	V := Vector[row](length_u*length_u);
+
+	#initialiser X,V dans le cas u[1]<>0
+	if (u[1]<>0) then
+		X[1,1]:=1;
+		X[1,2]:=1;
+		V[1]:=u[1];
+	end if;
+
+	#initialiser x,M,v
+	x := Vector([1,0],orientation=row);
+	M := Matrix([[u[2],u[3]],[u[1],u[2]]]);
+	v := Multiply(x,M);
+
+	#Réinitialiser x,M,v si v=0
+	if (Equal(v,ZeroVector[row](Dimension(v)))) then
+		do
+			shift_left(x,1);
+			shift_matrix(M,u,1,length_u);
+			v := Multiply(x,M);
+			if (not (Equal(v,ZeroVector[row](Dimension(v))))) then 
+				break;
+			end if;
+		end do;
+	end if;
+
+	do
+		position_1th_non_nul := get_position_1th_non_nul(v);
+		corrector := position_1th_non_nul;
+
+		#Initialiser le vecteur corrigeur dans le cas où u[1]=0 et/ou u[2]=0
+		#Il faut d'abord garantir l'indice de la matrice
+		if (corrector > RowDimension(X)) then
+			for k from (RowDimension(X)+1) to corrector do
+				X(k,1..) := ZeroVector[row](length_u+1);
+			end do;
+		end if;
+
+		if (X[corrector,1]=0) then # on est dans le cas où on a trouvé un vecteur corrigeur qui n'est pas encore créé, il faut le mettre dans X,V et chercher le vecteur corrigeur qui
+											# peut le corriger
+
+			#chercher le vecteur corrigeur qui peut corriger le nouveau corrigeur
+			do
+				X[corrector,1]:=Dimension(x);
+				X[corrector,2..Dimension(x)+1]:=x;
+				V[corrector]:=v[corrector];
+				d:=1;
+				if (corrector <>1) then
+					do 
+						corrector := position_1th_non_nul-d;
+						if ((X[corrector,1]<>0) or (d=corrector)) then
+							break;
+						end if;
+						d:=d+1;		
+					end do;
+				end if;
+		
+				shift_left(x,d);
+
+				if (2*Dimension(x)-1>length_u) then
+					out_of_size :=1;
+				end if; 
+
+
+				shift_matrix(M,u,Dimension(x)-RowDimension(M),length_u);
+
+				v := Multiply(x,M);
+
+				position_1th_non_nul := get_position_1th_non_nul(v);
+				corrector := position_1th_non_nul;
+
+				if (X[corrector,1]<>0) then
+						break;
+				end if;
+
+			end do;
+		end if;
+
+		X_shifted :=shift_right(X[corrector,2..X[corrector,1]+1],Dimension(x)-X[corrector,1]);
+		x_saved :=x;
+		x:= x_saved - Multiply((v[position_1th_non_nul]/V[corrector]),X_shifted );
+		v := Multiply(x,M);
+
+		if (Equal(v,ZeroVector[row](Dimension(v)))) then
+			result := Copy(x);
+			if ((out_of_size=1) or (x[Dimension(x)]=0)) then
+				if (x[Dimension(x)]=0) then #on veut essayer de réduire le vecteur qui se termine par 0
+					d:=1;
+					do
+						x_tmp := x[1..Dimension(x)-d];
+						M_tmp := M[1..Dimension(x)-d,1..Dimension(x)-d];
+						v := Multiply(x,M);
+						d := d+1;
+						if (x_tmp[Dimension(x_tmp)]<>0) then 
+							result := Copy(x_tmp);
+							break;
+						end if;
+					end do;
+				end if;
+				break;
+			else # on est dans le cas où on a trouvé la relation de récurrence pour les
+				  #  premiers composants, il faut vérifier sur le reste de la suite.
+				do
+					shift_left(x,1);
+					shift_matrix(M,u,1,length_u);
+					v := Multiply(x,M);
+					if (2*Dimension(x)-1>length_u) then # on est dans le cas où le test est satisfait jusqu'à la fin de la suite.
+						out_of_size :=1;
+						break;
+					end if;
+					if (not Equal(v,ZeroVector[row](Dimension(v)))) then
+						break;
+					end if;
+				end do;
+			end if;
+		end if;
+
+		if (Equal(v,ZeroVector[row](Dimension(v))) and (out_of_size =1)) then # on est dans le cas où le test est satisfait jusqu'à la fin de la suite.
+			break;
+		end if;
+
+		
+	end do;
+
+	return result;
+
+end proc;
+
+#la fonction qui permet d'augmenter la taille de la matrice en ajoutant d éléments depuis la suite u et en garantissant que la taille de la matrice ne dépasse pas length_u.
+shift_matrix := proc(M,u,d,length_u)
+	local dim_old, dim_new, M_tmp, k, M_new,w,M_1;
+
+	dim_old := RowDimension(M);
+
+	resize_matrix(M,d);
+
+	dim_new := dim_old + d;
+
+	if (2*dim_new-1>length_u) then
+		M_tmp := Matrix(dim_new,length_u-dim_new+1);
+		
+		for k from 1 to dim_new do
+			M_tmp[k,1..length_u-dim_new+1] := Vector[row](SubVector(u,[k..length_u-dim_new+1+k-1]));
+		end do;
+
+
+		for k from 1 to dim_new do
+			M[k,1..length_u-dim_new+1] := M_tmp[dim_new+1-k,1..length_u-dim_new+1];
+		end do;
+	else 
+		M_tmp := Matrix(dim_new);
+		for k from 1 to dim_new do
+			M_tmp[k,1..dim_new] := Vector[row](SubVector(u,[k..dim_new+k-1]));
+		end do;
+
+		for k from 1 to dim_new do
+			M[k,1..dim_new] := M_tmp[dim_new+1-k,1..dim_new];
+		end do;
+
+	end if;
+
+end proc;
+
+#la fonction qui ajoute à une matrice M d colonnes, d lignes.
+resize_matrix := proc(M,d)
+	local k,dim_old;
+
+	dim_old := RowDimension(M);
+
+	for k from 1 to d do
+		M(dim_old+k,1..) := ZeroVector[row](dim_old);
+	end do;
+
+	for k from 1 to d do
+		M(1..,dim_old+k) := ZeroVector[column](dim_old+d);
+	end do;
+
+	for k from 1 to dim_old do
+		M(1..,k) := ZeroVector[column](dim_old+d);
+	end do;
+
+end proc;
+
+#la fonction qui décalage un vecteur x à gauche d pas. 
+shift_left := proc(x,d)
+	local L,y,k;
+
+   L := Dimension(x);
+
+	for k from 1 to d do
+		x(L+k):=0;
+	end do;
+	
+end proc;
+
+#la fonction qui renvoie la position du premier élément non-nul d'un vecteur u.
+get_position_1th_non_nul := proc(u)
+	local position_1th_non_nul;
+	L := Dimension(u);
+  
+	for  position_1th_non_nul from 1 to L do
+		if (u[ position_1th_non_nul]<>0) then
+			break;
+		end if;
+	end do;
+
+	return  position_1th_non_nul;
+
+end proc;
+
+#la fonction qui décalage un vecteur x à droite d pas. 
+shift_right := proc(u,d)
+	local L,y,k;
+	L := Dimension(u);
+
+	y := Vector[row](L+d);
+
+	for k from 1 to (L+d) do
+		if (k<=d) then
+			y[k]:=0;
+		else
+			y[k] := u[k-d];
+		end if;
+	end do;
+
+	return y;
+end proc;
+
+
+algo_BM(<1|2|3|5|8|13>);
+#algo_BM(<0|0|0|0|0|0|1|1|2|3|5|8>);
+#algo_BM(<0|0|0|1|1|2|3|5|8>);
+#algo_BM(<1|0|0|0|0|0|1|2|3|5|8|13>);
+#algo_BM(<0|1|1|2|3|5|8|13>);
+#algo_BM(<1|1|2|3|5|8|13|21|34|55>);
+#algo_BM(<1|2|3|5|7>);
+#algo_BM(<0|1|2|4|6|12>);
+#algo_BM(<1|0|0|1|1|2|4|7|13>); 
+#algo_BM(<1|5|2|8>);
+
+
+

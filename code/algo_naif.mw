@@ -1,0 +1,107 @@
+with(ArrayTools) :
+with(VectorCalculus):
+with(LinearAlgebra):
+with(Student[VectorCalculus]):
+with(LinearAlgebra):
+with(Student[LinearAlgebra]):
+
+formula_recurrente := proc(u)
+	local A, b, dim, L, d, x, y, z, failed;
+	L := Dimension(u);
+   failed :=0;
+
+	if modp(L,2)=1
+	then d := (L-1)/2;
+	else d := L/2;
+	end if;
+
+	if (u[1]!=0)
+	then y:=u[2]/u[1];
+			if Equal(y*SubVector(u,[2..L-1]),SubVector(u,[3..L]))
+	    then return y; 
+			end if;
+	else
+		dim :=2;
+     do
+		  A := Matrix(dim);
+    	A := create_matrix(dim,u);
+    	if (Determinant(A)= 0) then
+   	    dim := dim+1;
+			if(dim>d)
+			then failed := 1; break;
+			end if;
+    	else
+				b := create_vector(dim,u);
+				x :=  LinearSolve(A,b);
+				z := failed_formula(x,u);
+   	    if (z=1)
+			 	then dim := dim+1;
+							if(dim>d)
+							then failed := 1; break;
+							end if;
+			else
+				break;
+        end if;
+		end if;
+		end do;
+  end if;
+	
+	if (failed = 1) then
+		print('failed',failed);
+	else return x;
+	end if;
+   
+end proc;
+
+#fonction qui crée une matrix de taille d à partir du vecteur u.
+create_matrix := proc(d,u)
+	local A,k,x;
+   
+	A := Matrix(d);
+	w :=Vector[row](d);
+	for k from 1 to d do
+		w := SubVector(u,[k..k+d-1]);
+		A[k,1..d] := w;
+  od;
+	return A;
+end proc;
+
+#fonction qui crée un vecteur b ayant d éléments à partir
+#du vecteur u. Le vecteur b sera utilisé pour Ax=b plus tard.
+create_vector := proc(d,u)
+	local b,z;
+	b :=Vector[column](SubVector(u,[d+1..2*d]));
+	z := type(b,Vector);
+	return b;
+end proc;
+
+#fonction qui vérifie si le vecteur x propose des bonnes coefficients pour
+#une formule de récurrence entre les entrées de u.
+failed_formula := proc(x,u)
+	local k,d,end_point,count,nb_check,failed,tmp;
+	
+	d := Dimension(x);
+	end_point := Dimension(u)-d;
+	count:=0;
+	nb_check := end_point - d;
+   
+   tmp :=Vector[row](d);
+	for k from d+1 to end_point do
+		tmp :=SubVector(u,[k..k+d-1]);
+		if DotProduct(tmp,x)=u[k+d] 
+		then count := count+1; 
+	  end if;
+	od;
+
+	if (count=nb_check)
+	then failed:=0;
+	else failed:=1;
+	end if;
+	
+	return failed;
+end proc;
+
+#formula_recurrente(<0,1,1,2,3,5,8>);
+formula_recurrente(<0,1,1,2,3,5,7>);
+
+    
